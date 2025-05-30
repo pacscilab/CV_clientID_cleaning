@@ -157,13 +157,15 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <section id="similarity-scores" class="level2">
 <h2 class="anchored" data-anchor-id="similarity-scores">Similarity scores</h2>
+<p>Download the similarity score file from <a href="https://huggingface.co/datasets/pacscilab/VoxCommunis/blob/main/similarity_scores.txt">VoxCommunis</a>.</p>
 <div class="cell">
 <div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>col_names <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"test"</span>, <span class="st">"enroll"</span>, <span class="st">"score"</span>)</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>scores <span class="ot">&lt;-</span> <span class="fu">read_delim</span>(<span class="st">"vxc-speaker-scores-final.txt"</span>, <span class="at">col_names =</span> col_names, <span class="at">show_col_types =</span> <span class="cn">FALSE</span>)</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>threshold <span class="ot">=</span> <span class="fl">0.38288</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>scores <span class="ot">&lt;-</span> scores <span class="sc">|&gt;</span> <span class="fu">mutate</span>(<span class="at">lang_code =</span> <span class="fu">str_extract</span>(enroll, <span class="st">"(?&lt;=voice_)[^_]+"</span>), <span class="co"># Get the languages</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>                           <span class="at">under_threshold =</span> <span class="fu">if_else</span>(score <span class="sc">&lt;</span> threshold, T, F))</span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">glimpse</span>(scores)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="co"># Replace the file path with the one on your computer</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>scores <span class="ot">&lt;-</span> <span class="fu">read_delim</span>(<span class="st">"similarity_scores.txt"</span>, <span class="at">col_names =</span> col_names, <span class="at">show_col_types =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>threshold <span class="ot">=</span> <span class="fl">0.38288</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>scores <span class="ot">&lt;-</span> scores <span class="sc">|&gt;</span> <span class="fu">mutate</span>(<span class="at">lang_code =</span> <span class="fu">str_extract</span>(enroll, <span class="st">"(?&lt;=voice_)[^_]+"</span>), <span class="co"># Get the languages</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>                           <span class="at">under_threshold =</span> <span class="fu">if_else</span>(score <span class="sc">&lt;</span> threshold, T, F))</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">glimpse</span>(scores)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
 <pre><code>Rows: 9,204,867
 Columns: 5

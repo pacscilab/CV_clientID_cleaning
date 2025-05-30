@@ -13,9 +13,6 @@ author:
     affiliation: University of Zurich
   - name: Eleanor Chodroff
     affiliation: University of Zurich
-affiliations:
-  - id: "uzh"
-    name: Department of Computational Linguistics, University of Zurich
 format: html
 ---
 
