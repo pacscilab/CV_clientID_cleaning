@@ -76,10 +76,19 @@ Download the similarity score file from [VoxCommunis](https://huggingface.co/dat
 col_names <- c("test", "enroll", "score")
 # Replace the file path with the one on your computer
 scores <- read_delim("similarity_scores.txt", col_names = col_names, show_col_types = FALSE)
-threshold = 0.38288
+threshold = 0.354
 scores <- scores |> mutate(lang_code = str_extract(enroll, "(?<=voice_)[^_]+"), # Get the languages
                            under_threshold = if_else(score < threshold, T, F))
 glimpse(scores)
+
+summary(scores$score)
+scores_by_lang <- scores |>
+  group_by(lang_code) |> 
+  summarise(q1 = quantile(score, 0.25), 
+            median = median(score), 
+            q3 = quantile(score, 0.75))
+summary(scores_by_lang$q1)
+summary(scores_by_lang$q3)
 ```
 
 Plot the distribution of the similarity scores across all languages.
@@ -89,21 +98,21 @@ scores |>
   ggplot(aes(score)) +
   geom_histogram(aes(fill = after_stat(density)), bins = 40,
                  show.legend = F) +
-  #geom_vline(xintercept = 0.38, color = "red3", linewidth = 0.5) +
+  #geom_vline(xintercept = threshold, color = "red3", linewidth = 0.5) +
   scale_fill_viridis_c() +
   scale_y_continuous(expand = expansion(mult = c(0, .1)),
-                     label = scales::label_number(scale = 1/100000)) +
+                     label = scales::label_number(scale = 1)) +
   scale_x_continuous(breaks = c(0, 0.4, 0.8)) +
-  labs(y = expression("Count (\u00D710,000)"), x = "Similarity score") +
+  labs(y = expression("Count"), x = "Similarity score") +
   coord_cartesian(xlim = c(-0.1, 1.0)) +
   theme(panel.grid.major.x = element_line(linewidth = 0.4),
         panel.grid.minor.x = element_line(linewidth = 0.2),
         panel.grid.major.y = element_line(linewidth = 0.4),
-        axis.text.x = element_text(size=14),
-        axis.text.y = element_text(size=14),
+        axis.text.x = element_text(size=16),
+        axis.text.y = element_text(size=16),
         axis.title.x = element_text(size=16),
-        axis.title.y = element_text(size=13)) 
-
+        axis.title.y = element_text(size=16)) 
+ggsave("~/Desktop/hist_score.pdf", plot=last_plot(), height = 3, width = 7, dpi = 300)
 ```
 
 
@@ -111,14 +120,15 @@ The next step require downloading speaker files from [VoxCommunis Corpus](https:
 
 ```{r get speaker files}
 # Replace the path below with the one on your own computer
-spkr_dir <- "/Users/miaozhang/Research/VoxCommunis/VoxCommunis_Huggingface/speaker_files"
+spkr_dir <- "~/VoxCommunis_Huggingface/speaker_files"
 spkr_files <- list.files(spkr_dir, pattern = "*.tsv", full.names = T)
 
 spkr_files <- map_dfr(spkr_files, \(x) read_tsv(x, col_select = c("path", "speaker_id"), show_col_types = FALSE))
+
 spkr_files <- mutate(spkr_files, speaker_id = paste(str_extract(path, "(?<=voice_)[^_]+"), speaker_id, sep = "_"))
 spkr_files <- rename(spkr_files, test = path)
-
 spkr_files <- mutate(spkr_files, test = str_replace(test, ".mp3", ""))
+
 scores <- mutate(scores, test = str_replace(test, ".wav", ""))
 
 scores <- inner_join(scores, spkr_files, by = "test")
@@ -132,10 +142,11 @@ Evaluate how much the client IDs are affected by the heterogeneous speaker issue
 
 ```{r get data ready for evaluating speaker heterogeneity}
 speaker_id_impact <- scores |> 
-  summarize(n = n(), prop_threshold = sum(under_threshold)/n(), .by = speaker_id) |> 
+  summarize(n = n() + 1, prop_threshold = sum(under_threshold)/(n() + 1), .by = speaker_id) |> 
   mutate(affected = if_else(prop_threshold > 0, T, F),
          more_than_10 = if_else(prop_threshold > 0.10, T, F),
          lang = str_extract(speaker_id, "^[^_]+")) 
+
 n_affected_more_than_10 <- speaker_id_impact |> 
   summarize(n_affected = sum(more_than_10),
             n_total = n(), 
@@ -148,6 +159,20 @@ prop_more_than_100 <- scores |> summarize(n = n() + 1, .by = c(lang_code, speake
             n = n(),
             .by = lang_code)
 
+summary(prop_under_threshold_by_lang$prop_threshold)
+nrow(subset(prop_under_threshold_by_lang, prop_threshold < 0.1))
+nrow(subset(speaker_id_impact, prop_threshold < 0.1))
+nrow(subset(speaker_id_impact, prop_threshold < 0.1)) / nrow(speaker_id_impact)
+affected_ids <- speaker_id_impact |>
+  group_by(lang, more_than_10) |>
+  summarise(greaterThan10 = n()) |>
+  pivot_wider(names_from = more_than_10, values_from = greaterThan10) |>
+  rename("good" = `FALSE`,
+         "bad" = `TRUE`) |>
+  mutate(bad = ifelse(is.na(bad), 0, bad), 
+         total = sum(good + bad),
+         prop = bad/total)
+summary(affected_ids$prop)
 
 ```
 
@@ -159,35 +184,40 @@ prop_under_threshold_by_lang |>
   ggplot(aes(reorder(lang_code, -prop_threshold), prop_threshold, fill = prop_threshold)) +
   geom_col() +
   scale_fill_viridis_c() +
-  scale_y_continuous(labels = scales::percent_format(), lim = c(0,0.3), 
+  scale_y_continuous(lim = c(0,0.25), 
                      expand = expansion(mult = c(0, .01))) +
   guides(fill = "none") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.35, size = 11),
+  #ylab("Prop. utterances") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.35, size = 8),
         axis.title.x = element_blank(),
         axis.title.y = element_blank(),
+        #axis.title.y = element_text(size = 16),
+        axis.text.y = element_text(size = 16),
         axis.ticks.x = element_blank(),
         panel.grid.major.y = element_line(linetype = 3),
         legend.title = element_blank())
+ggsave("~/Desktop/dist_scores.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
 
 # The proportion of client IDs that have more than 10% of the associated recordings with a score lower than the threshold
 ggplot(n_affected_more_than_10, aes(reorder(lang, desc(perc)), perc, fill = perc)) +
   geom_col() +
-  scale_y_continuous(labels = scales::label_percent(), expand = expansion(mult = c(0, 0.1))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
   scale_fill_viridis_c() +
   guides(fill = "none") +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.4, size = 11),
-        axis.ticks.x = element_blank(),
+  #ylab("Prop. client IDs") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.35, size = 8),
         axis.title.x = element_blank(),
         axis.title.y = element_blank(),
+        #axis.title.y = element_text(size = 16),
+        axis.text.y = element_text(size = 16),
+        axis.ticks.x = element_blank(),
         legend.title = element_blank(),
         panel.grid.major.y = element_line(linetype = 3))
-
+ggsave("~/Desktop/under_threshold_perc.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
 ```
 
 
 ## Auditing result: round 1
-
-
 
 Read in the auditing result from round 1.
 
@@ -203,18 +233,22 @@ glimpse(audit_r1)
 Plot the round 1 results.
 
 ```{r r1 results plotting}
+audit_r1$validation <- factor(audit_r1$validation, levels = c("Different Speaker", "Same Speaker", "Audio Quality Issue", "Missing Speech", "Not Sure"))
 ggplot(audit_r1, aes(x = score_bin, fill = validation)) + 
   stat_count(position = "dodge") +
-  scale_fill_viridis_d(end = 0.98, begin = 0.05, alpha = 0.9) +
+  scale_fill_manual(values = c("#5a2b75", "#3d9e96", "#f3e740", "#4a6b99", "#6bcd72")) +
   scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
-  theme_ggdist(base_size = 6.5) +
+  #theme_ggdist(base_size = 6.5) +
+  ylab("Count") + 
+  guides(fill=guide_legend(nrow=2,byrow=TRUE)) +
   theme(axis.title.x = element_blank(),
         panel.grid.major.y = element_line(linetype = 3, linewidth = 0.8),
         axis.text = element_text(size = 16),
-        axis.title.y = element_text(size = 20),
-        legend.text = element_text(size = 13),
+        axis.title.y = element_text(size = 16),
+        legend.text = element_text(size = 15),
         legend.position = "bottom",
         legend.title = element_blank()) 
+ggsave("~/Desktop/vxc-spkr-val.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
 ```
 
 ## Auditing result: round 1
@@ -236,24 +270,23 @@ kappam.fleiss(kappa_dat)
 Fit a GLMER model to evaluate the threshold to reject same speaker hypothesis.
 
 ```{r make the data into long format}
-audit_r2_long <- audit_r2 %>% pivot_longer(cols = starts_with("person"), 
-                             names_to = ("person"), 
-                             values_to = "name") %>% 
-  pivot_longer(cols = starts_with("validation"), 
-               names_to = ("validation"), 
-               values_to = "val")
-audit_r2_long <- subset(audit_r2_long, name == "Annotator1" & validation == "validation1" |
-                   name == "Annotator2" & validation == "validation2" |
-                   name == "Annotator3" & validation == "validation3" |
-                   name == "Annotator4" & validation == "validation4" |
-                   name == "Annotator5" & validation == "validation5")
+audit_r2_long <- audit_r2 |> 
+  pivot_longer(cols = starts_with("person"), names_to = ("person"), values_to = "name") |>
+  pivot_longer(cols = starts_with("validation"), names_to = ("validation"), values_to = "val") |>
+  filter(name == "Annotator1" & validation == "validation1" |
+           name == "Annotator2" & validation == "validation2" |
+           name == "Annotator3" & validation == "validation3" |
+           name == "Annotator4" & validation == "validation4" |
+           name == "Annotator5" & validation == "validation5")
 glimpse(audit_r2_long)
 ```
 
 ```{r fit the glmer model}
-samediff_all <- subset(audit_r2_long, val %in% c("Same Speaker","Different Speaker"))
-samediff_all$nVal <- ifelse(samediff_all$val == "Same Speaker", 1, 0)
-mod <- glmer(nVal ~ score + (1 | person) + (0 + score | person), family = "binomial", data = samediff_all)
+samediff_all <- audit_r2_long |> 
+  filter(val %in% c("Same Speaker","Different Speaker")) |>
+  mutate(nVal = ifelse(val == "Same Speaker", 1, 0))
+mod <- glmer(nVal ~ score + (1 | person) + (0 + score | person) + (1 | lang) + (0 + score | lang), family = "binomial", data = samediff_all)
+summary(mod)
 ```
 
 Get the threshold.
@@ -279,10 +312,15 @@ ggplot(samediff_all, aes(x = score, y = nVal)) +
   geom_line(data = preds, aes(x = x, y = predicted), 
             color = "deepskyblue3", size = 1.2, inherit.aes = FALSE) +
   scale_x_continuous(limits = c(-0.2, 1)) +
-  labs(x = "Similarity Score", y = "Probability") +
+  labs(x = "Similarity score", y = "Probability") +
   geom_vline(xintercept = threshold, linetype = "dashed", color = "red") +
-  theme_minimal() +
-  theme(panel.grid.minor = element_blank()) 
+  theme(panel.grid.minor = element_blank(),
+        axis.text.y = element_text(size = 16),
+        axis.title.y = element_text(size = 16),
+        axis.text.x = element_text(size = 16),
+        axis.title.x = element_text(size = 16)) 
+ggsave("~/Desktop/turning_point.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
+
 ```
 
 
