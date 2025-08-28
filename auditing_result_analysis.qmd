@@ -1,5 +1,5 @@
 ---
-title: "Supplemenetary materials for Quantifying and Reducing Speaker Heterogeneity within the Common Voice Corpus for Phonetic Analysis (Interspeech 2025)"
+title: "Supplementary materials for Quantifying and Reducing Speaker Heterogeneity within the Common Voice Corpus for Phonetic Analysis (Interspeech 2025)"
 author:
   - name: Miao Zhang
   - name: Aref Farhadipour
@@ -83,10 +83,8 @@ Load the similarity score file into R and obtain some descriptive stats.
 # Define the column names of the similarity score file.
 col_names <- c("test", "enroll", "score")
 
-# Put the path to the similarity score on your computer
-path2scores <- "/Users/miaozhang/Research/VoxCommunis/VoxCommunis_Huggingface/similarity_scores_interspeech2025.txt"
-
 # Replace the file path with the one on your computer
+path2scores <- "/Users/miaozhang/Research/VoxCommunis/VoxCommunis_Huggingface/similarity_scores_interspeech2025.txt"
 scores <- read_delim(path2scores, col_names = col_names, show_col_types = FALSE, delim = " ")
 
 # Use the threshold from our paper
@@ -134,7 +132,7 @@ scores |>
         axis.title.x = element_text(size=16),
         axis.title.y = element_text(size=16)) 
 ```
-Then load the speaker files 
+Then load the speaker files.
 
 ```{r get speaker files}
 # Replace the path below with the one on your own computer
