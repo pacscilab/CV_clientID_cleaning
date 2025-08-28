@@ -2,6 +2,8 @@
 
 This repository contains the supplementary materials and links to additional processing code and data for the paper: [Quantifying and Reducing Speaker Heterogeneity within the Common Voice Corpus for Phonetic Analysis (Interspeech 2025).](https://www.isca-archive.org/interspeech_2025/zhang25s_interspeech.pdf)
 
+Quick link: download the client ID similarity scores here: [Hugging Face](https://huggingface.co/datasets/pacscilab/VoxCommunis/tree/main/similarity_scores)
+
 ## Automatic speaker verification
 The automatic speaker verification was conducted on the validated portion of language-specific datasets from the Mozilla Common Voice Corpus for each client ID. For each language-specific client ID, we used the final recording made by each client with at least three tokenized words, or the final recording for all other cases. Client IDs with only one recording are not included in this procedure or output. 
 
