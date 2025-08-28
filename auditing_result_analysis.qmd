@@ -2,21 +2,28 @@
 title: "Supplemenetary materials for Quantifying and Reducing Speaker Heterogeneity within the Common Voice Corpus for Phonetic Analysis (Interspeech 2025)"
 author:
   - name: Miao Zhang
-    affiliation: University of Zurich
   - name: Aref Farhadipour
-    affiliation: University of Zurich
   - name: Annie Baker
-    affiliation: University of Zurich
   - name: Jiachen Ma
-    affiliation: University of Zurich
   - name: Bogdan Pricop
-    affiliation: University of Zurich
   - name: Eleanor Chodroff
-    affiliation: University of Zurich
 format: html
 ---
 
+## Introduction
 
+This .qmd file is intended to reproduce the results and visualizations from the paper [Zhang, M., Farhadipour, A., Baker, A., Ma, J., Pricop, B., Chodroff, E. (2025) Quantifying and Reducing Speaker Heterogeneity within the Common Voice Corpus for Phonetic Analysis. Proc. Interspeech 2025, 3933-3937, doi: 10.21437/Interspeech.2025-2027](https://www.isca-archive.org/interspeech_2025/zhang25s_interspeech.pdf).
+
+This paper addresses the problem of speaker heterogeneity in the Mozilla Common Voice corpus, where a single “client ID” may include recordings from multiple speakers, complicating phonetic analysis and speech technology development. We use ResNet-293-based speaker embeddings to compute similarity scores between utterances within the same client ID and then design a speaker discrimination task to determine an optimal similarity threshold. Through large-scale evaluation across 76 languages, we identify a threshold of 0.354 that effectively reduces speaker heterogeneity while minimizing data loss (averaging 3.5% per language). 
+
+### How to use this script
+
+There are several data files you need to download from the repo to run this script yourself.
+
+1. [The similarity scores](https://huggingface.co/datasets/pacscilab/VoxCommunis/blob/main/similarity_scores_interspeech2025.txt)
+2. [The speaker files](https://huggingface.co/datasets/pacscilab/VoxCommunis/tree/main/speaker_files)
+3. [First round audit results](https://github.com/pacscilab/CV_clientID_cleaning/blob/main/audit_r1.csv)
+4. [Second round audit results](https://github.com/pacscilab/CV_clientID_cleaning/blob/main/audit_r2.csv)
 
 ```{r load packages}
 #| echo: FALSE
@@ -70,17 +77,27 @@ create_scoreBin <- function(df) {
 
 ## Similarity scores
 
-Download the similarity score file from [VoxCommunis](https://huggingface.co/datasets/pacscilab/VoxCommunis/blob/main/similarity_scores.txt).
+Load the similarity score file into R and obtain some descriptive stats.
 
 ```{r get the similarity scores}
+# Define the column names of the similarity score file.
 col_names <- c("test", "enroll", "score")
+
+# Put the path to the similarity score on your computer
+path2scores <- "/Users/miaozhang/Research/VoxCommunis/VoxCommunis_Huggingface/similarity_scores_interspeech2025.txt"
+
 # Replace the file path with the one on your computer
-scores <- read_delim("similarity_scores.txt", col_names = col_names, show_col_types = FALSE)
+scores <- read_delim(path2scores, col_names = col_names, show_col_types = FALSE, delim = " ")
+
+# Use the threshold from our paper
 threshold = 0.354
+
+# Get the language codes and check if the file has a score under the threshold
 scores <- scores |> mutate(lang_code = str_extract(enroll, "(?<=voice_)[^_]+"), # Get the languages
                            under_threshold = if_else(score < threshold, T, F))
 glimpse(scores)
 
+# Get some summary of the similarity scores
 summary(scores$score)
 scores_by_lang <- scores |>
   group_by(lang_code) |> 
@@ -91,14 +108,18 @@ summary(scores_by_lang$q1)
 summary(scores_by_lang$q3)
 ```
 
-Plot the distribution of the similarity scores across all languages.
+Plot the distribution of the similarity scores.
 
 ```{r histogram of scores}
+# Adjust the figure plotting setting
+#| fig-width: 6
+#| fig-height: 3.5
+#| fig-align: center
+
 scores |> 
   ggplot(aes(score)) +
   geom_histogram(aes(fill = after_stat(density)), bins = 40,
                  show.legend = F) +
-  #geom_vline(xintercept = threshold, color = "red3", linewidth = 0.5) +
   scale_fill_viridis_c() +
   scale_y_continuous(expand = expansion(mult = c(0, .1)),
                      label = scales::label_number(scale = 1)) +
@@ -112,73 +133,108 @@ scores |>
         axis.text.y = element_text(size=16),
         axis.title.x = element_text(size=16),
         axis.title.y = element_text(size=16)) 
-ggsave("~/Desktop/hist_score.pdf", plot=last_plot(), height = 3, width = 7, dpi = 300)
 ```
-
-
-The next step require downloading speaker files from [VoxCommunis Corpus](https://huggingface.co/datasets/pacscilab/VoxCommunis).
+Then load the speaker files 
 
 ```{r get speaker files}
 # Replace the path below with the one on your own computer
-spkr_dir <- "~/VoxCommunis_Huggingface/speaker_files"
+spkr_dir <- "/Users/miaozhang/Research/VoxCommunis/VoxCommunis_Huggingface/speaker_files"
 spkr_files <- list.files(spkr_dir, pattern = "*.tsv", full.names = T)
 
 spkr_files <- map_dfr(spkr_files, \(x) read_tsv(x, col_select = c("path", "speaker_id"), show_col_types = FALSE))
 
-spkr_files <- mutate(spkr_files, speaker_id = paste(str_extract(path, "(?<=voice_)[^_]+"), speaker_id, sep = "_"))
-spkr_files <- rename(spkr_files, test = path)
-spkr_files <- mutate(spkr_files, test = str_replace(test, ".mp3", ""))
-
+# Unify the extension in both datasets
+spkr_files <- mutate(spkr_files, 
+                     speaker_id = paste(str_extract(path, "(?<=voice_)[^_]+"), speaker_id, sep = "_")) |>
+  rename(test = path) |> 
+  mutate(test = str_replace(test, ".mp3", ""))
 scores <- mutate(scores, test = str_replace(test, ".wav", ""))
 
+# join the two datasets together
 scores <- inner_join(scores, spkr_files, by = "test")
 glimpse(scores)
 
+# Get the propotion of files under the threshold in each language
 prop_under_threshold_by_lang <- scores |> 
   summarize(prop_threshold = sum(under_threshold)/n(), .by = lang_code)
 ```
 
-Evaluate how much the client IDs are affected by the heterogeneous speaker issue by looking into how many client IDs that contain recordings from multiple speakers there are.
+Evaluate to what extent the client IDs are affected by speaker heterogeneity by looking into the number of client IDs that contain recordings from multiple speakers.
 
 ```{r get data ready for evaluating speaker heterogeneity}
+# Summarize by speaker_id: compute number of files (n) and proportion under threshold
 speaker_id_impact <- scores |> 
-  summarize(n = n() + 1, prop_threshold = sum(under_threshold)/(n() + 1), .by = speaker_id) |> 
-  mutate(affected = if_else(prop_threshold > 0, T, F),
-         more_than_10 = if_else(prop_threshold > 0.10, T, F),
-         lang = str_extract(speaker_id, "^[^_]+")) 
+  summarize(
+    n = n() + 1,  
+    prop_threshold = sum(under_threshold) / (n() + 1),  
+    .by = speaker_id
+  ) |> 
+  mutate(
+    affected = if_else(prop_threshold > 0, T, F),          # Check if any of the recordings under the client ID are from a different speaker
+    more_than_10 = if_else(prop_threshold > 0.10, T, F),  # Check if more than 10% of the recordings under the client ID are from a different speaker
+    lang = str_extract(speaker_id, "^[^_]+")              
+  )
 
+# Count how many speakers are affected by >10% under threshold, per language
 n_affected_more_than_10 <- speaker_id_impact |> 
-  summarize(n_affected = sum(more_than_10),
-            n_total = n(), 
-            perc = n_affected/n_total,
-            .by = lang) 
+  summarize(
+    n_affected = sum(more_than_10),         # number of speakers with >10% affected
+    n_total = n(),                          # total speakers
+    perc = n_affected / n_total,            # proportion affected
+    .by = lang
+  )
 
-prop_more_than_100 <- scores |> summarize(n = n() + 1, .by = c(lang_code, speaker_id)) |> 
-  mutate(more_than_100 = if_else(n >= 100, T, F)) |> 
-  summarize(prop_more_than_100 = sum(more_than_100)/n(),
-            n = n(),
-            .by = lang_code)
+# For each speaker, count if they have more than 100 files
+prop_more_than_100 <- scores |> 
+  summarize(n = n() + 1, .by = c(lang_code, speaker_id)) |> 
+  mutate(more_than_100 = if_else(n >= 100, T, F)) |>   # flag speakers with >= 100 files
+  summarize(
+    prop_more_than_100 = sum(more_than_100) / n(),     # proportion of speakers with >= 100 files
+    n = n(),                                          # total speakers
+    .by = lang_code
+  )
 
-summary(prop_under_threshold_by_lang$prop_threshold)
-nrow(subset(prop_under_threshold_by_lang, prop_threshold < 0.1))
-nrow(subset(speaker_id_impact, prop_threshold < 0.1))
-nrow(subset(speaker_id_impact, prop_threshold < 0.1)) / nrow(speaker_id_impact)
+# Check the distribution of prop_threshold by language
+print("Proportion of files under the threshold by language:")
+print(summary(prop_under_threshold_by_lang$prop_threshold))
+
+# Count speakers under various cutoff conditions
+print(paste("Languages with <10% under threshold:", 
+            nrow(subset(prop_under_threshold_by_lang, prop_threshold < 0.1))))
+
+print(paste("Number of Client IDs with <10% under threshold: ", 
+            nrow(subset(speaker_id_impact, prop_threshold < 0.1))))
+
+print(paste("Proportion of client IDs <10% under threshold:", 
+            round(nrow(subset(speaker_id_impact, prop_threshold < 0.1)) / 
+                    nrow(speaker_id_impact), 3)))  
+
+# Summarize affected speakers by language and whether >10% affected
 affected_ids <- speaker_id_impact |>
   group_by(lang, more_than_10) |>
-  summarise(greaterThan10 = n()) |>
-  pivot_wider(names_from = more_than_10, values_from = greaterThan10) |>
-  rename("good" = `FALSE`,
-         "bad" = `TRUE`) |>
-  mutate(bad = ifelse(is.na(bad), 0, bad), 
-         total = sum(good + bad),
-         prop = bad/total)
-summary(affected_ids$prop)
+  summarise(greaterThan10 = n()) |>          # count speakers per lang × condition
+  pivot_wider(names_from = more_than_10, values_from = greaterThan10) |> 
+  rename("good" = `FALSE`,                   # "good" = speakers not badly affected
+         "bad" = `TRUE`) |>                  # "bad" = speakers with >10% data affected
+  mutate(
+    bad = ifelse(is.na(bad), 0, bad),        # replace NA with 0 for langs with no "bad" speakers
+    total = sum(good + bad),                 # total speakers per language
+    prop = bad / total                       # proportion of "bad" speakers
+  )
 
+# Distribution of bad-speaker proportions across languages
+print("The proportion of client IDs that contain different speaker's voices in more than 10% of the associated recordings")
+summary(affected_ids$prop)
 ```
 
 Plot the the degree to which client IDs and languages are affected.
 
 ```{r plot the heterogeneity results}
+# Adjust the figure plotting setting
+#| fig-width: 6
+#| fig-height: 3.5
+#| fig-align: center
+
 # The proportion of files in each language with a score under the threshold
 prop_under_threshold_by_lang |> 
   ggplot(aes(reorder(lang_code, -prop_threshold), prop_threshold, fill = prop_threshold)) +
@@ -196,7 +252,7 @@ prop_under_threshold_by_lang |>
         axis.ticks.x = element_blank(),
         panel.grid.major.y = element_line(linetype = 3),
         legend.title = element_blank())
-ggsave("~/Desktop/dist_scores.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
+#ggsave("~/Desktop/dist_scores.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
 
 # The proportion of client IDs that have more than 10% of the associated recordings with a score lower than the threshold
 ggplot(n_affected_more_than_10, aes(reorder(lang, desc(perc)), perc, fill = perc)) +
@@ -213,7 +269,7 @@ ggplot(n_affected_more_than_10, aes(reorder(lang, desc(perc)), perc, fill = perc
         axis.ticks.x = element_blank(),
         legend.title = element_blank(),
         panel.grid.major.y = element_line(linetype = 3))
-ggsave("~/Desktop/under_threshold_perc.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
+#ggsave("~/Desktop/under_threshold_perc.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
 ```
 
 
@@ -222,18 +278,28 @@ ggsave("~/Desktop/under_threshold_perc.pdf", plot=last_plot(), dpi = 300, height
 Read in the auditing result from round 1.
 
 ```{r get audit r1 data}
+# load the first round audit result
 audit_r1 <- read_csv("audit_r1.csv") |> 
   create_scoreBin() |> 
   mutate(validation = factor(validation, 
-                             levels = c("Different Speaker", "Audio Quality Issue", 
-                                        "Missing Speech", "Not Sure", "Same Speaker")))
+                             levels = c("Different Speaker", 
+                                        "Same Speaker",
+                                        "Audio Quality Issue", 
+                                        "Missing Speech", 
+                                        "Not Sure"
+                                        )))
 glimpse(audit_r1)
 ```
 
 Plot the round 1 results.
 
 ```{r r1 results plotting}
-audit_r1$validation <- factor(audit_r1$validation, levels = c("Different Speaker", "Same Speaker", "Audio Quality Issue", "Missing Speech", "Not Sure"))
+# Adjust the figure plotting setting
+#| fig-width: 6
+#| fig-height: 3.5
+#| fig-align: center
+
+
 ggplot(audit_r1, aes(x = score_bin, fill = validation)) + 
   stat_count(position = "dodge") +
   scale_fill_manual(values = c("#5a2b75", "#3d9e96", "#f3e740", "#4a6b99", "#6bcd72")) +
@@ -248,7 +314,7 @@ ggplot(audit_r1, aes(x = score_bin, fill = validation)) +
         legend.text = element_text(size = 15),
         legend.position = "bottom",
         legend.title = element_blank()) 
-ggsave("~/Desktop/vxc-spkr-val.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
+#ggsave("~/Desktop/vxc-spkr-val.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
 ```
 
 ## Auditing result: round 1
@@ -264,10 +330,11 @@ Calculate the Fleiss' Kappa.
 
 ```{r fleiss kappa}
 kappa_dat <- audit_r2[, colnames(audit_r2) %in% c("validation1", "validation2", "validation3", "validation4", "validation5")]
-kappam.fleiss(kappa_dat)
+kappa_result <- kappam.fleiss(kappa_dat)
+print(paste0("The Fleiss' Kappa = ", round(kappa_result$value, 2)))
 ```
 
-Fit a GLMER model to evaluate the threshold to reject same speaker hypothesis.
+Fit a GLMM model to evaluate a threshold for rejecting same-speaker hypothesis.
 
 ```{r make the data into long format}
 audit_r2_long <- audit_r2 |> 
@@ -293,12 +360,18 @@ Get the threshold.
 
 ```{r obtain the threshold}
 threshold <- -fixef(mod)[1]/fixef(mod)[2]
-threshold
+print(paste0("The threshold is ", round(threshold, 3)))
 ```
 
 Plot the model result.
 
 ```{r plot the threshold}
+# Adjust the figure plotting setting
+#| fig-width: 6
+#| fig-height: 3.5
+#| fig-align: center
+
+
 samediff_all$predicted <- predict(mod, type = "response", re.form = NA)
 samediff_all$predicted_person <- predict(mod, type = "response")
 preds <- ggpredict(mod, terms = "score[all]", interval = "confidence")
@@ -319,7 +392,7 @@ ggplot(samediff_all, aes(x = score, y = nVal)) +
         axis.title.y = element_text(size = 16),
         axis.text.x = element_text(size = 16),
         axis.title.x = element_text(size = 16)) 
-ggsave("~/Desktop/turning_point.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
+#ggsave("~/Desktop/turning_point.pdf", plot=last_plot(), dpi = 300, height = 3, width = 7)
 
 ```
 
